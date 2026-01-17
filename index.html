@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#1a1a1a">
+    <title>75 Hard Tracker</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon.png">
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <header class="app-header">
+            <h1 class="app-title">75 HARD</h1>
+            <div class="day-counter">
+                <span class="day-label">Day</span>
+                <span class="day-number" id="currentDay">1</span>
+                <span class="day-total">/ 75</span>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Tab Navigation -->
+            <nav class="tab-nav">
+                <button class="tab-button active" data-tab="today" onclick="switchTab('today')">
+                    <span class="tab-icon">📋</span>
+                    <span class="tab-label">Today</span>
+                </button>
+                <button class="tab-button" data-tab="progress" onclick="switchTab('progress')">
+                    <span class="tab-icon">📸</span>
+                    <span class="tab-label">Progress</span>
+                </button>
+                <button class="tab-button" data-tab="calendar" onclick="switchTab('calendar')">
+                    <span class="tab-icon">📅</span>
+                    <span class="tab-label">Calendar</span>
+                </button>
+                <button class="tab-button" data-tab="settings" onclick="switchTab('settings')">
+                    <span class="tab-icon">⚙️</span>
+                    <span class="tab-label">Settings</span>
+                </button>
+            </nav>
+
+            <!-- Today Tab -->
+            <div id="today-tab" class="tab-content active">
+                <div class="progress-ring-container">
+                    <svg class="progress-ring" width="120" height="120">
+                        <circle class="progress-ring-circle-bg" cx="60" cy="60" r="52" />
+                        <circle class="progress-ring-circle" cx="60" cy="60" r="52" id="progressCircle" />
+                    </svg>
+                    <div class="progress-text">
+                        <span id="completionPercentage">0</span>%
+                    </div>
+                </div>
+
+                <div class="tasks-container">
+                    <div class="task-card" data-task="diet" onclick="toggleTask('diet')">
+                        <div class="task-checkbox">
+                            <div class="checkmark"></div>
+                        </div>
+                        <div class="task-info">
+                            <h3 class="task-title">Follow Your Diet</h3>
+                            <p class="task-description">No cheat meals, no alcohol</p>
+                        </div>
+                    </div>
+
+                    <div class="task-card" data-task="workout1" onclick="toggleTask('workout1')">
+                        <div class="task-checkbox">
+                            <div class="checkmark"></div>
+                        </div>
+                        <div class="task-info">
+                            <h3 class="task-title">Workout #1</h3>
+                            <p class="task-description">45 minutes, any type</p>
+                        </div>
+                    </div>
+
+                    <div class="task-card" data-task="workout2" onclick="toggleTask('workout2')">
+                        <div class="task-checkbox">
+                            <div class="checkmark"></div>
+                        </div>
+                        <div class="task-info">
+                            <h3 class="task-title">Workout #2</h3>
+                            <p class="task-description">45 minutes, outdoors</p>
+                        </div>
+                    </div>
+
+                    <div class="task-card" data-task="water" onclick="toggleTask('water')">
+                        <div class="task-checkbox">
+                            <div class="checkmark"></div>
+                        </div>
+                        <div class="task-info">
+                            <h3 class="task-title">Drink Water</h3>
+                            <p class="task-description">1 gallon (128 oz)</p>
+                        </div>
+                    </div>
+
+                    <div class="task-card" data-task="reading" onclick="toggleTask('reading')">
+                        <div class="task-checkbox">
+                            <div class="checkmark"></div>
+                        </div>
+                        <div class="task-info">
+                            <h3 class="task-title">Read 10 Pages</h3>
+                            <p class="task-description">Non-fiction, educational</p>
+                        </div>
+                    </div>
+
+                    <div class="task-card photo-task" data-task="photo" onclick="takePhoto()">
+                        <div class="task-checkbox">
+                            <div class="checkmark"></div>
+                        </div>
+                        <div class="task-info">
+                            <h3 class="task-title">Progress Photo</h3>
+                            <p class="task-description">Daily transformation pic</p>
+                        </div>
+                        <div class="photo-preview" id="photoPreview"></div>
+                    </div>
+                </div>
+
+                <button class="end-day-button" id="endDayButton" onclick="endDay()">
+                    Complete Day <span id="endDayNumber">1</span>
+                </button>
+
+                <input type="file" id="photoInput" accept="image/*" capture="environment" style="display: none;" onchange="handlePhotoCapture(event)">
+            </div>
+
+            <!-- Progress Tab -->
+            <div id="progress-tab" class="tab-content">
+                <div class="progress-header">
+                    <h2>Photo Progress</h2>
+                    <p class="progress-subtitle">Swipe to compare your transformation</p>
+                </div>
+
+                <div class="photo-comparison-container" id="photoComparisonContainer">
+                    <div class="no-photos-message">
+                        <span class="emoji">📸</span>
+                        <p>Take your first progress photo to see your transformation!</p>
+                    </div>
+                </div>
+
+                <div class="photo-gallery" id="photoGallery">
+                    <!-- Photos will be dynamically loaded here -->
+                </div>
+            </div>
+
+            <!-- Calendar Tab -->
+            <div id="calendar-tab" class="tab-content">
+                <div class="calendar-header">
+                    <h2>Your 75 Day Journey</h2>
+                    <div class="calendar-stats">
+                        <div class="stat-item">
+                            <span class="stat-value" id="completedDays">0</span>
+                            <span class="stat-label">Completed</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value" id="currentStreak">0</span>
+                            <span class="stat-label">Streak</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value" id="remainingDays">75</span>
+                            <span class="stat-label">Remaining</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="calendar-grid" id="calendarGrid">
+                    <!-- Calendar will be dynamically generated -->
+                </div>
+
+                <div class="attempt-history">
+                    <h3>Previous Attempts</h3>
+                    <div id="attemptHistory" class="attempt-list">
+                        <p class="no-attempts">No previous attempts yet. You got this! 💪</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Tab -->
+            <div id="settings-tab" class="tab-content">
+                <div class="settings-header">
+                    <h2>Settings</h2>
+                </div>
+
+                <div class="settings-section">
+                    <h3>Challenge</h3>
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <h4>Start Date</h4>
+                            <p id="startDateDisplay">Not started</p>
+                        </div>
+                    </div>
+                    <button class="setting-button" onclick="resetChallenge()">
+                        Start New Challenge
+                    </button>
+                </div>
+
+                <div class="settings-section">
+                    <h3>Appearance</h3>
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <h4>Dark Mode</h4>
+                            <p>Automatic based on system</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <h3>Data</h3>
+                    <button class="setting-button danger" onclick="clearAllData()">
+                        Clear All Data
+                    </button>
+                    <p class="setting-warning">⚠️ This will delete all your progress and photos. This cannot be undone.</p>
+                </div>
+
+                <div class="settings-section">
+                    <h3>About</h3>
+                    <p class="about-text">
+                        75 Hard Tracker v1.0<br>
+                        Built with ❤️ for your transformation journey<br><br>
+                        Remember: This is about mental toughness, not perfection.
+                    </p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
