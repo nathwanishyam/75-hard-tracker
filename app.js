@@ -8,6 +8,9 @@ let appState = {
         workout2: false,
         water: false,
         reading: false,
+        squats: false,
+        pushups: false,
+        abholds: false,
         photo: false
     },
     dailyProgress: {},
@@ -85,7 +88,7 @@ function updateTaskUI(taskName) {
 
 // Update progress ring
 function updateProgressRing() {
-    const totalTasks = 6;
+    const totalTasks = 9;
     const completedTasks = Object.values(appState.tasks).filter(Boolean).length;
     const percentage = Math.round((completedTasks / totalTasks) * 100);
     
@@ -174,6 +177,9 @@ function resetDailyTasks() {
         workout2: false,
         water: false,
         reading: false,
+        squats: false,
+        pushups: false,
+        abholds: false,
         photo: false
     };
 }
@@ -272,6 +278,9 @@ function confirmClearData() {
             workout2: false,
             water: false,
             reading: false,
+            squats: false,
+            pushups: false,
+            abholds: false,
             photo: false
         },
         dailyProgress: {},
@@ -572,3 +581,4 @@ style.textContent = `
     }
 `;
 document.head.appendChild(style);
+
