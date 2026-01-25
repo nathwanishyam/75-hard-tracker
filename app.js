@@ -11,6 +11,8 @@ let appState = {
         squats: false,
         pushups: false,
         abholds: false,
+        weights: false,
+        study: false,
         photo: false
     },
     dailyProgress: {},
@@ -23,6 +25,24 @@ function loadState() {
     const saved = localStorage.getItem('75hard-state');
     if (saved) {
         appState = JSON.parse(saved);
+        
+        // CRITICAL FIX: Check if the current day has already been completed
+        // If yes, we shouldn't be on this day - move to the next one
+        if (appState.dailyProgress[appState.currentDay]?.completed) {
+            console.log('Current day already completed, moving to next day');
+            if (appState.currentDay < 75) {
+                appState.currentDay++;
+                resetDailyTasks();
+                saveState();
+            }
+        }
+        
+        // CRITICAL FIX: Ensure tasks for current day are properly initialized
+        // If we don't have task data for current day, make sure it's reset
+        if (!appState.tasks || typeof appState.tasks !== 'object') {
+            resetDailyTasks();
+        }
+        
         updateUI();
     }
 }
@@ -88,7 +108,7 @@ function updateTaskUI(taskName) {
 
 // Update progress ring
 function updateProgressRing() {
-    const totalTasks = 9;
+    const totalTasks = 11;
     const completedTasks = Object.values(appState.tasks).filter(Boolean).length;
     const percentage = Math.round((completedTasks / totalTasks) * 100);
     
@@ -149,22 +169,30 @@ function endDay() {
         return;
     }
 
-    // Save current day progress
+    // CRITICAL: Save current day progress BEFORE incrementing
     appState.dailyProgress[appState.currentDay] = {
         date: new Date().toISOString(),
         completed: true,
         tasks: { ...appState.tasks }
     };
+    
+    // Save immediately to prevent data loss
+    saveState();
 
     // Move to next day
     if (appState.currentDay < 75) {
+        const completedDay = appState.currentDay;
         appState.currentDay++;
         resetDailyTasks();
-        updateUI();
+        
+        // Save again after moving to next day
         saveState();
-        showToast(`Day ${appState.currentDay - 1} complete! 🎉`);
+        updateUI();
+        
+        showToast(`Day ${completedDay} complete! 🎉`);
     } else {
         // Challenge completed!
+        saveState();
         completeChallengeSuccess();
     }
 }
@@ -180,6 +208,8 @@ function resetDailyTasks() {
         squats: false,
         pushups: false,
         abholds: false,
+        weights: false,
+        study: false,
         photo: false
     };
 }
@@ -233,6 +263,32 @@ function resetChallenge() {
     }
 }
 
+// Fix stuck day - manually advance to next day
+function fixStuckDay() {
+    showModal(
+        'Fix Stuck Day?',
+        `This will move you from Day ${appState.currentDay} to Day ${appState.currentDay + 1} and reset today's tasks. Use this if you're stuck in a loop. Are you sure?`,
+        [
+            { text: 'Cancel', class: 'secondary', action: () => hideModal() },
+            { text: 'Fix It', class: 'primary', action: () => confirmFixStuckDay() }
+        ]
+    );
+}
+
+function confirmFixStuckDay() {
+    if (appState.currentDay < 75) {
+        appState.currentDay++;
+        resetDailyTasks();
+        saveState();
+        updateUI();
+        hideModal();
+        showToast(`Moved to Day ${appState.currentDay} ✅`);
+    } else {
+        hideModal();
+        showToast('Already on Day 75!');
+    }
+}
+
 function confirmResetChallenge() {
     if (appState.currentDay > 1) {
         appState.attempts.push({
@@ -281,6 +337,8 @@ function confirmClearData() {
             squats: false,
             pushups: false,
             abholds: false,
+            weights: false,
+            study: false,
             photo: false
         },
         dailyProgress: {},
@@ -309,6 +367,12 @@ function updateUI() {
         });
     } else {
         startDateDisplay.textContent = 'Not started';
+    }
+    
+    // Update current day display in settings
+    const currentDayDisplay = document.getElementById('currentDayDisplay');
+    if (currentDayDisplay) {
+        currentDayDisplay.textContent = `Day ${appState.currentDay} of 75`;
     }
 
     // If no start date, set it now
@@ -581,4 +645,3 @@ style.textContent = `
     }
 `;
 document.head.appendChild(style);
-

@@ -138,6 +138,26 @@
                         </div>
                     </div>
 
+                    <div class="task-card" data-task="weights" onclick="toggleTask('weights')">
+                        <div class="task-checkbox">
+                            <div class="checkmark"></div>
+                        </div>
+                        <div class="task-info">
+                            <h3 class="task-title">Weight Training</h3>
+                            <p class="task-description">Evening strength session</p>
+                        </div>
+                    </div>
+
+                    <div class="task-card" data-task="study" onclick="toggleTask('study')">
+                        <div class="task-checkbox">
+                            <div class="checkmark"></div>
+                        </div>
+                        <div class="task-info">
+                            <h3 class="task-title">1 Hour Study</h3>
+                            <p class="task-description">CILA exam preparation</p>
+                        </div>
+                    </div>
+
                     <div class="task-card photo-task" data-task="photo" onclick="takePhoto()">
                         <div class="task-checkbox">
                             <div class="checkmark"></div>
@@ -222,8 +242,17 @@
                             <p id="startDateDisplay">Not started</p>
                         </div>
                     </div>
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <h4>Current Day</h4>
+                            <p id="currentDayDisplay">Day 1</p>
+                        </div>
+                    </div>
                     <button class="setting-button" onclick="resetChallenge()">
                         Start New Challenge
+                    </button>
+                    <button class="setting-button" onclick="fixStuckDay()" style="background: #0066cc; margin-top: 10px;">
+                        Fix Stuck Day (Move to Next Day)
                     </button>
                 </div>
 
