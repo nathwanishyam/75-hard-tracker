@@ -11,6 +11,14 @@ A beautiful, modern Progressive Web App to track your 75 Hard Challenge journey.
 - Read 10 pages of non-fiction
 - Take daily progress photos
 
+🛠️ **Custom Habits**
+- Add your own habits alongside the 75 Hard defaults
+- Edit or remove any habit
+- Drag to reorder them in your daily list
+- One-tap "Reset to 75 Hard Defaults"
+- Progress photos are stored in IndexedDB (not localStorage), so the
+  challenge never gets stuck on a day when storage fills up
+
 📸 **Photo Progress**
 - Before/after comparison slider
 - Photo gallery with all your progress pics
