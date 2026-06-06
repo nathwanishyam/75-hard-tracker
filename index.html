@@ -57,117 +57,8 @@
                     </div>
                 </div>
 
-                <div class="tasks-container">
-                    <div class="task-card" data-task="diet" onclick="toggleTask('diet')">
-                        <div class="task-checkbox">
-                            <div class="checkmark"></div>
-                        </div>
-                        <div class="task-info">
-                            <h3 class="task-title">Follow Your Diet</h3>
-                            <p class="task-description">No cheat meals, no alcohol</p>
-                        </div>
-                    </div>
-
-                    <div class="task-card" data-task="workout1" onclick="toggleTask('workout1')">
-                        <div class="task-checkbox">
-                            <div class="checkmark"></div>
-                        </div>
-                        <div class="task-info">
-                            <h3 class="task-title">Workout #1</h3>
-                            <p class="task-description">45 minutes, any type</p>
-                        </div>
-                    </div>
-
-                    <div class="task-card" data-task="workout2" onclick="toggleTask('workout2')">
-                        <div class="task-checkbox">
-                            <div class="checkmark"></div>
-                        </div>
-                        <div class="task-info">
-                            <h3 class="task-title">Workout #2</h3>
-                            <p class="task-description">45 minutes, outdoors</p>
-                        </div>
-                    </div>
-
-                    <div class="task-card" data-task="water" onclick="toggleTask('water')">
-                        <div class="task-checkbox">
-                            <div class="checkmark"></div>
-                        </div>
-                        <div class="task-info">
-                            <h3 class="task-title">Drink Water</h3>
-                            <p class="task-description">1 gallon (128 oz)</p>
-                        </div>
-                    </div>
-
-                    <div class="task-card" data-task="reading" onclick="toggleTask('reading')">
-                        <div class="task-checkbox">
-                            <div class="checkmark"></div>
-                        </div>
-                        <div class="task-info">
-                            <h3 class="task-title">Read 10 Pages</h3>
-                            <p class="task-description">Non-fiction, educational</p>
-                        </div>
-                    </div>
-
-                    <div class="task-card" data-task="squats" onclick="toggleTask('squats')">
-                        <div class="task-checkbox">
-                            <div class="checkmark"></div>
-                        </div>
-                        <div class="task-info">
-                            <h3 class="task-title">Squat Protocol</h3>
-                            <p class="task-description">Daily squat holds for posture</p>
-                        </div>
-                    </div>
-
-                    <div class="task-card" data-task="pushups" onclick="toggleTask('pushups')">
-                        <div class="task-checkbox">
-                            <div class="checkmark"></div>
-                        </div>
-                        <div class="task-info">
-                            <h3 class="task-title">50 Push-ups</h3>
-                            <p class="task-description">Can be broken into sets</p>
-                        </div>
-                    </div>
-
-                    <div class="task-card" data-task="abholds" onclick="toggleTask('abholds')">
-                        <div class="task-checkbox">
-                            <div class="checkmark"></div>
-                        </div>
-                        <div class="task-info">
-                            <h3 class="task-title">3+ Min Ab Holds</h3>
-                            <p class="task-description">Plank or hollow body holds</p>
-                        </div>
-                    </div>
-
-                    <div class="task-card" data-task="weights" onclick="toggleTask('weights')">
-                        <div class="task-checkbox">
-                            <div class="checkmark"></div>
-                        </div>
-                        <div class="task-info">
-                            <h3 class="task-title">Weight Training</h3>
-                            <p class="task-description">Evening strength session</p>
-                        </div>
-                    </div>
-
-                    <div class="task-card" data-task="study" onclick="toggleTask('study')">
-                        <div class="task-checkbox">
-                            <div class="checkmark"></div>
-                        </div>
-                        <div class="task-info">
-                            <h3 class="task-title">1 Hour Study</h3>
-                            <p class="task-description">CILA exam preparation</p>
-                        </div>
-                    </div>
-
-                    <div class="task-card photo-task" data-task="photo" onclick="takePhoto()">
-                        <div class="task-checkbox">
-                            <div class="checkmark"></div>
-                        </div>
-                        <div class="task-info">
-                            <h3 class="task-title">Progress Photo</h3>
-                            <p class="task-description">Daily transformation pic</p>
-                        </div>
-                        <div class="photo-preview" id="photoPreview"></div>
-                    </div>
+                <div class="tasks-container" id="tasksContainer">
+                    <!-- Task cards are rendered dynamically from appState.habits -->
                 </div>
 
                 <button class="end-day-button" id="endDayButton" onclick="endDay()">
@@ -253,6 +144,16 @@
                     </button>
                     <button class="setting-button" onclick="fixStuckDay()" style="background: #0066cc; margin-top: 10px;">
                         Fix Stuck Day (Move to Next Day)
+                    </button>
+                </div>
+
+                <div class="settings-section">
+                    <h3>Habits</h3>
+                    <p class="settings-hint">Add your own habits, edit or remove any, and drag the <span class="drag-glyph">⠿</span> handle to reorder. Changes apply to your daily list.</p>
+                    <div id="habitManager" class="habit-manager"></div>
+                    <button class="setting-button" onclick="openHabitForm()">+ Add Habit</button>
+                    <button class="setting-button secondary" onclick="resetHabitsToDefaults()" style="margin-top: 10px;">
+                        Reset to 75 Hard Defaults
                     </button>
                 </div>
 

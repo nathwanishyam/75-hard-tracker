@@ -1,63 +1,227 @@
-// Initialize app state
+// The canonical 75 Hard task list. Used to seed a new challenge and to
+// "Reset to defaults". Habits are data-driven from here on, so the UI can
+// add / edit / delete / reorder them freely.
+const DEFAULT_HABITS = [
+    { id: 'diet', title: 'Follow Your Diet', description: 'No cheat meals, no alcohol', type: 'check' },
+    { id: 'workout1', title: 'Workout #1', description: '45 minutes, any type', type: 'check' },
+    { id: 'workout2', title: 'Workout #2', description: '45 minutes, outdoors', type: 'check' },
+    { id: 'water', title: 'Drink Water', description: '1 gallon (128 oz)', type: 'check' },
+    { id: 'reading', title: 'Read 10 Pages', description: 'Non-fiction, educational', type: 'check' },
+    { id: 'squats', title: 'Squat Protocol', description: 'Daily squat holds for posture', type: 'check' },
+    { id: 'pushups', title: '50 Push-ups', description: 'Can be broken into sets', type: 'check' },
+    { id: 'abholds', title: '3+ Min Ab Holds', description: 'Plank or hollow body holds', type: 'check' },
+    { id: 'weights', title: 'Weight Training', description: 'Evening strength session', type: 'check' },
+    { id: 'study', title: '1 Hour Study', description: 'CILA exam preparation', type: 'check' },
+    { id: 'photo', title: 'Progress Photo', description: 'Daily transformation pic', type: 'photo' }
+];
+
+function defaultHabits() {
+    return DEFAULT_HABITS.map(h => ({ ...h }));
+}
+
+// Build a fresh "today" task map (all unchecked) from a habits list.
+function buildTasks(habits) {
+    const tasks = {};
+    habits.forEach(h => { tasks[h.id] = false; });
+    return tasks;
+}
+
+// Initialize app state.
+// NOTE: `photos` is an in-memory cache only — the actual image data lives in
+// IndexedDB (see photo-store below) so it never bloats the localStorage blob
+// that holds the critical state. This is what fixes the "stuck on a day" bug:
+// previously multi-MB base64 photos overflowed localStorage's ~5MB quota and
+// every saveState() threw, silently blocking the day counter.
 let appState = {
     currentDay: 1,
     startDate: null,
-    tasks: {
-        diet: false,
-        workout1: false,
-        workout2: false,
-        water: false,
-        reading: false,
-        squats: false,
-        pushups: false,
-        abholds: false,
-        weights: false,
-        study: false,
-        photo: false
-    },
+    habits: defaultHabits(),
+    tasks: buildTasks(DEFAULT_HABITS),
     dailyProgress: {},
     photos: {},
     attempts: []
 };
 
+/* ------------------------------------------------------------------ */
+/* Photo storage (IndexedDB) — large quota, kept out of localStorage   */
+/* ------------------------------------------------------------------ */
+const PHOTO_DB = '75hard-photos';
+const PHOTO_STORE = 'photos';
+let _photoDbPromise = null;
+
+function openPhotoDb() {
+    if (_photoDbPromise) return _photoDbPromise;
+    _photoDbPromise = new Promise((resolve, reject) => {
+        if (!window.indexedDB) { reject(new Error('IndexedDB unavailable')); return; }
+        const req = indexedDB.open(PHOTO_DB, 1);
+        req.onupgradeneeded = () => {
+            const db = req.result;
+            if (!db.objectStoreNames.contains(PHOTO_STORE)) {
+                db.createObjectStore(PHOTO_STORE);
+            }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+    return _photoDbPromise;
+}
+
+function photoTx(mode, fn) {
+    return openPhotoDb().then(db => new Promise((resolve, reject) => {
+        const tx = db.transaction(PHOTO_STORE, mode);
+        const store = tx.objectStore(PHOTO_STORE);
+        const result = fn(store);
+        tx.oncomplete = () => resolve(result && result.value !== undefined ? result.value : result);
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+    }));
+}
+
+function photoSet(day, dataUrl) {
+    return photoTx('readwrite', store => store.put(dataUrl, String(day)));
+}
+
+function photoDelete(day) {
+    return photoTx('readwrite', store => store.delete(String(day)));
+}
+
+function photoClearAll() {
+    return photoTx('readwrite', store => store.clear());
+}
+
+// Load every saved photo into the in-memory appState.photos cache.
+function photoGetAll() {
+    return openPhotoDb().then(db => new Promise((resolve, reject) => {
+        const tx = db.transaction(PHOTO_STORE, 'readonly');
+        const store = tx.objectStore(PHOTO_STORE);
+        const out = {};
+        const req = store.openCursor();
+        req.onsuccess = () => {
+            const cursor = req.result;
+            if (cursor) { out[cursor.key] = cursor.value; cursor.continue(); }
+            else resolve(out);
+        };
+        req.onerror = () => reject(req.error);
+    }));
+}
+
+// Hydrate the in-memory photo cache from IndexedDB, then refresh photo UI.
+async function hydratePhotos() {
+    try {
+        appState.photos = await photoGetAll();
+    } catch (e) {
+        console.error('Could not load photos', e);
+        appState.photos = appState.photos || {};
+    }
+    refreshPhotoUI();
+}
+
+// Downscale a captured image so it stays small (~100-300KB) instead of the
+// multi-MB originals phones produce. Returns a JPEG data URL.
+function downscaleImage(file, maxSize = 1280, quality = 0.8) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                let { width, height } = img;
+                if (width > height && width > maxSize) {
+                    height = Math.round(height * (maxSize / width));
+                    width = maxSize;
+                } else if (height > maxSize) {
+                    width = Math.round(width * (maxSize / height));
+                    height = maxSize;
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                try {
+                    resolve(canvas.toDataURL('image/jpeg', quality));
+                } catch (err) {
+                    resolve(e.target.result); // fall back to original if canvas is tainted
+                }
+            };
+            img.onerror = reject;
+            img.src = e.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
 // Load saved state from localStorage
 function loadState() {
     const saved = localStorage.getItem('75hard-state');
-    if (saved) {
-        appState = JSON.parse(saved);
-        
-        // CRITICAL FIX: Check if the current day has already been completed
-        // If yes, we shouldn't be on this day - move to the next one
-        if (appState.dailyProgress[appState.currentDay]?.completed) {
-            console.log('Current day already completed, moving to next day');
-            if (appState.currentDay < 75) {
-                appState.currentDay++;
-                resetDailyTasks();
-                saveState();
-            }
+    if (!saved) return;
+
+    let migratePhotos = null;
+    try {
+        const parsed = JSON.parse(saved);
+
+        // Migration: older versions stored photos inside the state blob (the
+        // cause of the quota bug). Pull them out so we can move them to IDB.
+        if (parsed.photos && Object.keys(parsed.photos).length) {
+            migratePhotos = parsed.photos;
         }
-        
-        // CRITICAL FIX: Ensure tasks for current day are properly initialized
-        // If we don't have task data for current day, make sure it's reset
-        if (!appState.tasks || typeof appState.tasks !== 'object') {
-            resetDailyTasks();
+        parsed.photos = {};
+
+        // Migration: older versions had no habits list. Seed it from defaults.
+        if (!Array.isArray(parsed.habits) || parsed.habits.length === 0) {
+            parsed.habits = defaultHabits();
         }
-        
-        updateUI();
+        if (!parsed.tasks || typeof parsed.tasks !== 'object') {
+            parsed.tasks = buildTasks(parsed.habits);
+        }
+
+        appState = parsed;
+    } catch (e) {
+        console.error('Could not parse saved state', e);
+        return;
+    }
+
+    // Recovery: if the current day is already marked completed (possible with
+    // legacy half-saved state from the old quota bug), advance past it so the
+    // user isn't stranded on a finished day.
+    if (appState.dailyProgress[appState.currentDay]?.completed && appState.currentDay < 75) {
+        appState.currentDay++;
+        resetDailyTasks();
+        saveState();
+    }
+
+    // Move any legacy in-state photos into IndexedDB, then drop them from
+    // localStorage by re-saving the (now photo-free) state.
+    if (migratePhotos) {
+        Object.keys(migratePhotos).forEach(day => {
+            photoSet(day, migratePhotos[day]).catch(err => console.error('photo migrate failed', err));
+        });
+        saveState();
+    }
+
+    updateUI();
+}
+
+// Save the critical state to localStorage. Photos are intentionally excluded
+// (they live in IndexedDB), keeping this blob tiny. Wrapped so a storage
+// failure can never throw and abort callers like endDay().
+function saveState() {
+    try {
+        const { photos, ...persist } = appState;
+        localStorage.setItem('75hard-state', JSON.stringify(persist));
+        return true;
+    } catch (e) {
+        console.error('saveState failed', e);
+        showToast('⚠️ Could not save progress — storage full');
+        return false;
     }
 }
 
-// Save state to localStorage
-function saveState() {
-    localStorage.setItem('75hard-state', JSON.stringify(appState));
-}
-
 // Initialize app
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     loadState();
     updateUI();
     generateCalendar();
-    loadPhotos();
+    await hydratePhotos();
 });
 
 // Switch between tabs
@@ -80,12 +244,15 @@ function switchTab(tabName) {
     } else if (tabName === 'progress') {
         loadPhotos();
         updateComparison();
+    } else if (tabName === 'settings') {
+        renderHabitManager();
     }
 }
 
 // Toggle task completion
 function toggleTask(taskName) {
-    if (taskName === 'photo') {
+    const habit = appState.habits.find(h => h.id === taskName);
+    if (habit && habit.type === 'photo') {
         takePhoto();
         return;
     }
@@ -98,7 +265,8 @@ function toggleTask(taskName) {
 
 // Update task UI
 function updateTaskUI(taskName) {
-    const taskCard = document.querySelector(`[data-task="${taskName}"]`);
+    const taskCard = document.querySelector(`.task-card[data-task="${taskName}"]`);
+    if (!taskCard) return;
     if (appState.tasks[taskName]) {
         taskCard.classList.add('completed');
     } else {
@@ -106,11 +274,55 @@ function updateTaskUI(taskName) {
     }
 }
 
+// Escape user-provided text before inserting into HTML.
+function escapeHtml(str) {
+    return String(str == null ? '' : str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// Render today's task cards from the habits list.
+function renderTasks() {
+    const container = document.getElementById('tasksContainer');
+    if (!container) return;
+
+    if (!appState.habits.length) {
+        container.innerHTML = `
+            <div class="empty-habits">
+                <p>No habits yet. Add some in <strong>Settings → Habits</strong>.</p>
+            </div>`;
+        return;
+    }
+
+    container.innerHTML = appState.habits.map(habit => {
+        const done = appState.tasks[habit.id] ? ' completed' : '';
+        const isPhoto = habit.type === 'photo';
+        const extraClass = isPhoto ? ' photo-task' : '';
+        const photoImg = isPhoto && appState.photos[appState.currentDay]
+            ? `<img src="${appState.photos[appState.currentDay]}" alt="Progress photo">` : '';
+        const preview = isPhoto ? `<div class="photo-preview" id="photoPreview">${photoImg}</div>` : '';
+        return `
+            <div class="task-card${extraClass}${done}" data-task="${escapeHtml(habit.id)}" onclick="toggleTask('${escapeHtml(habit.id)}')">
+                <div class="task-checkbox">
+                    <div class="checkmark"></div>
+                </div>
+                <div class="task-info">
+                    <h3 class="task-title">${escapeHtml(habit.title)}</h3>
+                    <p class="task-description">${escapeHtml(habit.description)}</p>
+                </div>
+                ${preview}
+            </div>`;
+    }).join('');
+}
+
 // Update progress ring
 function updateProgressRing() {
-    const totalTasks = 11;
-    const completedTasks = Object.values(appState.tasks).filter(Boolean).length;
-    const percentage = Math.round((completedTasks / totalTasks) * 100);
+    const totalTasks = appState.habits.length;
+    const completedTasks = appState.habits.filter(h => appState.tasks[h.id]).length;
+    const percentage = totalTasks ? Math.round((completedTasks / totalTasks) * 100) : 0;
     
     const circle = document.getElementById('progressCircle');
     const circumference = 2 * Math.PI * 52;
@@ -126,37 +338,59 @@ function takePhoto() {
 }
 
 // Handle photo capture
-function handlePhotoCapture(event) {
+async function handlePhotoCapture(event) {
     const file = event.target.files[0];
     if (!file) return;
+    event.target.value = ''; // allow re-selecting the same file later
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        const imageData = e.target.result;
-        
-        // Save photo for current day
-        appState.photos[appState.currentDay] = imageData;
-        appState.tasks.photo = true;
-        
-        // Update preview
-        const preview = document.getElementById('photoPreview');
-        preview.innerHTML = `<img src="${imageData}" alt="Progress photo">`;
-        
-        // Update task UI
-        updateTaskUI('photo');
-        updateProgressRing();
-        saveState();
-        
-        // Show success feedback
-        showToast('Photo saved! 📸');
-    };
-    reader.readAsDataURL(file);
+    let imageData;
+    try {
+        imageData = await downscaleImage(file);
+    } catch (e) {
+        console.error('Could not process photo', e);
+        showToast('⚠️ Could not process photo');
+        return;
+    }
+
+    // Cache in memory and persist to IndexedDB (not localStorage).
+    appState.photos[appState.currentDay] = imageData;
+    try {
+        await photoSet(appState.currentDay, imageData);
+    } catch (e) {
+        console.error('Could not save photo', e);
+        showToast('⚠️ Could not save photo — but your day still counts');
+    }
+
+    // The photo habit (whatever its id) is now satisfied.
+    const photoHabit = appState.habits.find(h => h.type === 'photo');
+    if (photoHabit) appState.tasks[photoHabit.id] = true;
+
+    refreshPhotoUI();
+    updateProgressRing();
+    saveState();
+    showToast('Photo saved! 📸');
+}
+
+// Refresh anything that displays photos (today's preview + galleries).
+function refreshPhotoUI() {
+    const photoHabit = appState.habits.find(h => h.type === 'photo');
+    const preview = document.getElementById('photoPreview');
+    if (preview) {
+        const img = appState.photos[appState.currentDay];
+        preview.innerHTML = img ? `<img src="${img}" alt="Progress photo">` : '';
+    }
+    if (photoHabit) updateTaskUI(photoHabit.id);
+    loadPhotos();
+    if (document.getElementById('progress-tab')?.classList.contains('active')) {
+        updateComparison();
+    }
 }
 
 // End current day
 function endDay() {
-    const allTasksComplete = Object.values(appState.tasks).every(Boolean);
-    
+    const allTasksComplete = appState.habits.length > 0 &&
+        appState.habits.every(h => appState.tasks[h.id]);
+
     if (!allTasksComplete) {
         showModal(
             'Incomplete Day',
@@ -199,19 +433,7 @@ function endDay() {
 
 // Reset daily tasks
 function resetDailyTasks() {
-    appState.tasks = {
-        diet: false,
-        workout1: false,
-        workout2: false,
-        water: false,
-        reading: false,
-        squats: false,
-        pushups: false,
-        abholds: false,
-        weights: false,
-        study: false,
-        photo: false
-    };
+    appState.tasks = buildTasks(appState.habits);
 }
 
 // Complete challenge success
@@ -325,27 +547,19 @@ function clearAllData() {
 
 function confirmClearData() {
     localStorage.removeItem('75hard-state');
+    photoClearAll().catch(err => console.error('Could not clear photos', err));
+    const habits = defaultHabits();
     appState = {
         currentDay: 1,
         startDate: null,
-        tasks: {
-            diet: false,
-            workout1: false,
-            workout2: false,
-            water: false,
-            reading: false,
-            squats: false,
-            pushups: false,
-            abholds: false,
-            weights: false,
-            study: false,
-            photo: false
-        },
+        habits: habits,
+        tasks: buildTasks(habits),
         dailyProgress: {},
         photos: {},
         attempts: []
     };
     updateUI();
+    refreshPhotoUI();
     hideModal();
     showToast('All data cleared');
 }
@@ -381,19 +595,8 @@ function updateUI() {
         saveState();
     }
 
-    // Update all task UIs
-    Object.keys(appState.tasks).forEach(taskName => {
-        updateTaskUI(taskName);
-    });
-
-    // Update photo preview
-    if (appState.photos[appState.currentDay]) {
-        const preview = document.getElementById('photoPreview');
-        preview.innerHTML = `<img src="${appState.photos[appState.currentDay]}" alt="Progress photo">`;
-    } else {
-        const preview = document.getElementById('photoPreview');
-        preview.innerHTML = '';
-    }
+    // Render today's task cards from the habits list (data-driven)
+    renderTasks();
 
     // Update progress ring
     updateProgressRing();
@@ -560,6 +763,201 @@ function initComparisonSlider() {
 function viewPhoto(day) {
     // For now, just log it
     console.log('Viewing photo for day', day);
+}
+
+/* ------------------------------------------------------------------ */
+/* Habit management — add / edit / delete / reorder custom habits      */
+/* ------------------------------------------------------------------ */
+
+function genHabitId() {
+    let id;
+    do {
+        id = 'h' + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
+    } while (appState.habits.some(h => h.id === id));
+    return id;
+}
+
+// Render the editable habit list in Settings.
+function renderHabitManager() {
+    const container = document.getElementById('habitManager');
+    if (!container) return;
+
+    if (!appState.habits.length) {
+        container.innerHTML = '<p class="habit-empty">No habits yet — add one below.</p>';
+        return;
+    }
+
+    container.innerHTML = appState.habits.map(h => `
+        <div class="habit-row" data-id="${escapeHtml(h.id)}">
+            <div class="habit-drag" title="Drag to reorder">⠿</div>
+            <div class="habit-row-info">
+                <div class="habit-row-title">${escapeHtml(h.title)}${h.type === 'photo' ? ' 📸' : ''}</div>
+                <div class="habit-row-desc">${escapeHtml(h.description || '')}</div>
+            </div>
+            <button class="habit-icon-btn" data-edit="${escapeHtml(h.id)}" aria-label="Edit">✎</button>
+            <button class="habit-icon-btn danger" data-del="${escapeHtml(h.id)}" aria-label="Delete">✕</button>
+        </div>`).join('');
+
+    container.querySelectorAll('.habit-drag').forEach(handle => {
+        handle.addEventListener('pointerdown', (e) => {
+            const row = handle.closest('.habit-row');
+            if (row) startHabitDrag(e, row.dataset.id);
+        });
+    });
+    container.querySelectorAll('[data-edit]').forEach(b =>
+        b.addEventListener('click', () => openHabitForm(b.dataset.edit)));
+    container.querySelectorAll('[data-del]').forEach(b =>
+        b.addEventListener('click', () => deleteHabit(b.dataset.del)));
+}
+
+// --- Drag-and-drop reordering (pointer events: works on touch + mouse) ---
+let _habitDrag = null;
+
+function startHabitDrag(e, id) {
+    e.preventDefault();
+    const container = document.getElementById('habitManager');
+    const row = container && container.querySelector(`.habit-row[data-id="${id}"]`);
+    if (!row) return;
+    _habitDrag = { row, container };
+    row.classList.add('dragging');
+    document.body.classList.add('habit-dragging');
+    document.addEventListener('pointermove', onHabitDragMove);
+    document.addEventListener('pointerup', endHabitDrag);
+    document.addEventListener('pointercancel', endHabitDrag);
+}
+
+function onHabitDragMove(e) {
+    if (!_habitDrag) return;
+    e.preventDefault();
+    const { container, row } = _habitDrag;
+    const others = [...container.querySelectorAll('.habit-row:not(.dragging)')];
+    let ref = null;
+    for (const r of others) {
+        const rect = r.getBoundingClientRect();
+        if (e.clientY < rect.top + rect.height / 2) { ref = r; break; }
+    }
+    if (ref) container.insertBefore(row, ref);
+    else container.appendChild(row);
+}
+
+function endHabitDrag() {
+    if (!_habitDrag) return;
+    const { container, row } = _habitDrag;
+    row.classList.remove('dragging');
+    document.body.classList.remove('habit-dragging');
+    document.removeEventListener('pointermove', onHabitDragMove);
+    document.removeEventListener('pointerup', endHabitDrag);
+    document.removeEventListener('pointercancel', endHabitDrag);
+    _habitDrag = null;
+
+    // Commit the new order from the DOM back into state.
+    const order = [...container.querySelectorAll('.habit-row')].map(r => r.dataset.id);
+    appState.habits.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+    saveState();
+    updateUI(); // reflect the new order on the Today tab
+}
+
+// --- Add / edit form ---
+function openHabitForm(id) {
+    const editing = id ? appState.habits.find(h => h.id === id) : null;
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.id = 'habitFormModal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <h3>${editing ? 'Edit Habit' : 'Add Habit'}</h3>
+            <input id="habitTitleInput" class="habit-input" type="text" maxlength="60"
+                   placeholder="Habit name" value="${editing ? escapeHtml(editing.title) : ''}">
+            <textarea id="habitDescInput" class="habit-input" maxlength="120" rows="2"
+                      placeholder="Short description (optional)">${editing ? escapeHtml(editing.description || '') : ''}</textarea>
+            <div class="modal-buttons">
+                <button class="modal-button secondary" onclick="hideHabitForm()">Cancel</button>
+                <button class="modal-button primary" id="habitFormSave">Save</button>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+    document.getElementById('habitFormSave').addEventListener('click', () => saveHabitForm(id || null));
+    document.getElementById('habitTitleInput').focus();
+}
+
+function hideHabitForm() {
+    const m = document.getElementById('habitFormModal');
+    if (m) m.remove();
+}
+
+function saveHabitForm(id) {
+    const title = document.getElementById('habitTitleInput').value.trim();
+    const description = document.getElementById('habitDescInput').value.trim();
+    if (!title) { showToast('Please enter a habit name'); return; }
+
+    if (id) {
+        const h = appState.habits.find(x => x.id === id);
+        if (h) { h.title = title; h.description = description; }
+    } else {
+        const newId = genHabitId();
+        appState.habits.push({ id: newId, title, description, type: 'check' });
+        appState.tasks[newId] = false;
+    }
+    saveState();
+    hideHabitForm();
+    renderHabitManager();
+    updateUI();
+    showToast(id ? 'Habit updated' : 'Habit added');
+}
+
+// --- Delete ---
+let _pendingDeleteHabitId = null;
+function deleteHabit(id) {
+    const h = appState.habits.find(x => x.id === id);
+    if (!h) return;
+    _pendingDeleteHabitId = id;
+    showModal(
+        'Delete Habit?',
+        `Remove "${escapeHtml(h.title)}" from your daily list?`,
+        [
+            { text: 'Cancel', class: 'secondary', action: () => hideModal() },
+            { text: 'Delete', class: 'primary', action: () => confirmDeleteHabit() }
+        ]
+    );
+}
+
+function confirmDeleteHabit() {
+    const id = _pendingDeleteHabitId;
+    _pendingDeleteHabitId = null;
+    if (id) {
+        appState.habits = appState.habits.filter(h => h.id !== id);
+        delete appState.tasks[id];
+        saveState();
+        renderHabitManager();
+        updateUI();
+        showToast('Habit removed');
+    }
+    hideModal();
+}
+
+// --- Reset to the canonical 75 Hard list ---
+function resetHabitsToDefaults() {
+    showModal(
+        'Reset Habits?',
+        'Restore the original 75 Hard habits? Your custom habits will be removed. Day progress is kept.',
+        [
+            { text: 'Cancel', class: 'secondary', action: () => hideModal() },
+            { text: 'Reset', class: 'primary', action: () => confirmResetHabits() }
+        ]
+    );
+}
+
+function confirmResetHabits() {
+    appState.habits = defaultHabits();
+    const newTasks = buildTasks(appState.habits);
+    // Preserve today's completion for habits that still exist.
+    appState.habits.forEach(h => { if (appState.tasks[h.id]) newTasks[h.id] = true; });
+    appState.tasks = newTasks;
+    saveState();
+    renderHabitManager();
+    updateUI();
+    hideModal();
+    showToast('Habits reset to defaults');
 }
 
 // Modal functions
